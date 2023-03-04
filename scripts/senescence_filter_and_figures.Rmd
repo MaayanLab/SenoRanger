@@ -1,0 +1,453 @@
+---
+title: "Senescence Figures and Files"
+author: "Eden Deng"
+date: '2023-01-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, root.dir = "/Users/edendeng/MaayanLab/target-identifier-proteomics-lncrnas/cell-aging-revisions")
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(knitr)
+library(reshape2)
+library(data.table)
+```
+
+```{r load_filters}
+wd = "~/MaayanLab/target-identifier-proteomics-lncrnas/final/cell-aging-revisions"
+
+hpa_secretome = read.delim(paste0(wd, "/data/HPA_secreted_proteins_predicted.tsv"), sep = '\t', header = T) %>% filter(Evidence == "Evidence at protein level" & RNA.tissue.specificity != "Low tissue specificity")
+# syn = read.table(paste0(wd, "/data/HPA_secreted_proteins_predicted.tsv"), sep = '\t', header = T)['Gene.synonym'][[1]]
+# for (x in syn[syn != ""]) {
+#   hpa_secretome <- append(hpa_secretome, strsplit(x, ", ")[[1]])
+# }
+
+hpa_membranome = read.delim(paste0(wd, "/data/HPA_membrane_proteins_predicted.tsv"), sep = '\t', header = T) %>% filter(Evidence == "Evidence at protein level" & RNA.tissue.specificity != "Low tissue specificity")
+# syn = read.table(paste0(wd, "/data/HPA_membrane_proteins_predicted.tsv"), sep = '\t', header = T)['Gene.synonym'][[1]]
+# for (x in syn[syn != ""]) {
+#   hpa_membranome <- append(hpa_membranome, strsplit(x, ", ")[[1]])
+# }
+
+compartments.know <- read.delim(paste0(wd, "/data/human_compartment_knowledge_full.tsv"), sep = '\t', header = F) %>% filter(V4 %in% c("Plasma membrane", "Cell surface") & (V7 >= 3))
+
+# library(UpSetR)
+# listInput <- list('HPA membrane-spanning predictions' = hpa_membranome$Gene, "Membranome DB" = membranome, 'Cell Surface Protein Atlas' = cspa, "COMPARTMENTS knowledge channel" = compartments.know$V2)
+# upset(fromList(listInput), order.by = "freq")
+# 
+# listInput <- list('HPA secretory protein predictions' = hpa_secretome$Gene, 'Cell Surface Protein Atlas' = cspa, "SPRome" = sprome)
+# upset(fromList(listInput), order.by = "freq")
+
+surfaceome = unique(intersect(compartments.know$V2, hpa_membranome$Gene))
+secretome = unique(hpa_secretome$Gene)
+
+```
+
+
+```{r load_genes}
+# GTEx
+de_gtex <- read.csv(paste0(wd, "/results/gtex_all_genes.csv")) # all significant DEGs
+
+unique_gtex <- unique(as.vector(as.matrix(de_gtex)))
+unique_gtex <- unique_gtex[unique_gtex != ""]
+counts_gtex = data.frame(matrix(nrow = length(unique_gtex), ncol = 2))
+colnames(counts_gtex) = c("Gene", "N")
+for (i in 1:length(unique_gtex)) {
+  g = unique_gtex[i]
+  counts_gtex[i,"Gene"] = g
+  counts_gtex[i,"N"] = sum(de_gtex == g)
+}
+
+# ARCHS4
+de_archs4 <- read.csv(paste0(wd, "/results/archs4_all_genes.csv"))
+
+unique_archs4 <- unique(as.vector(as.matrix(de_archs4)))
+unique_archs4 <- unique_archs4[unique_archs4 != ""]
+counts_archs4 = data.frame(matrix(nrow = length(unique_archs4), ncol = 2))
+colnames(counts_archs4) = c("Gene", "N")
+for (i in 1:length(unique_archs4)) {
+  g = unique_archs4[i]
+  counts_archs4[i,"Gene"] = g
+  counts_archs4[i,"N"] = sum(de_archs4 == g)
+}
+
+# Tabula Sapiens
+de_tab <- read.csv(paste0(wd, "/results/ts_all_genes.csv"))
+
+unique_tab <- unique(as.vector(as.matrix(de_tab)))
+unique_tab <- unique_tab[unique_tab != ""]
+counts_tab = data.frame(matrix(nrow = length(unique_tab), ncol = 2))
+colnames(counts_tab) = c("Gene", "N")
+for (i in 1:length(unique_tab)) {
+  g = unique_tab[i]
+  counts_tab[i,"Gene"] = g
+  counts_tab[i,"N"] = sum(de_tab == g)
+}
+
+```
+
+``` {r load_transcripts}
+# Aging
+#de_agedt <- read.csv(paste0(wd, "/results/aging_all_transcripts.csv")) # all significant DETs
+#unique_agedt <- unique(as.vector(as.matrix(de_agedt)))
+#aging_genes <- substring(unique_agedt, 19, 100)
+
+# GTEx
+de_gtext <- read.csv(paste0(wd, "/results/gtex_all_transcripts.csv"))
+
+unique_gtext <- unique(as.vector(as.matrix(de_gtext)))
+unique_gtext <- unique_gtext[unique_gtext != ""]
+counts_gtext = data.frame(matrix(nrow = length(unique_gtext), ncol = 2))
+colnames(counts_gtext) = c("Transcript.Gene", "N")
+for (i in 1:length(unique_gtext)) {
+  g = unique_gtext[i]
+  counts_gtext[i,"Transcript.Gene"] = g
+  counts_gtext[i,"N"] = sum(de_gtext == g)
+}
+
+# ARCHS4
+de_archs4t <- read.csv(paste0(wd, "/results/archs4_all_transcripts.csv"))
+
+unique_archs4t <- unique(as.vector(as.matrix(de_archs4t)))
+unique_archs4t <- unique_archs4t[unique_archs4t != ""]
+counts_archs4t = data.frame(matrix(nrow = length(unique_archs4t), ncol = 2))
+colnames(counts_archs4t) = c("Transcript.Gene", "N")
+for (i in 1:length(unique_archs4t)) {
+  g = unique_archs4t[i]
+  counts_archs4t[i,"Transcript.Gene"] = g
+  counts_archs4t[i,"N"] = sum(de_archs4t == g)
+}
+
+```
+
+To narrow down the gene candidate list, we look at only the top consistent gene targets, i.e., the genes that appeared as targets in at least 3 analysis conditions. 
+
+```{r merge}
+# merge gene results
+counts = merge(counts_archs4, counts_gtex, by = "Gene", all = TRUE)
+counts = merge(counts, counts_tab, by = "Gene", all = TRUE)
+colnames(counts) <- c("Gene", "ARCHS4", "GTEx", "TabulaSapiens")
+counts[is.na(counts)] <- 0
+counts <- counts %>%
+  filter(Gene != "") %>%
+  filter(ARCHS4 + GTEx + TabulaSapiens > 9)
+counts_melt <- melt(counts)
+colnames(counts_melt) <- c("Gene", "Background", "N")
+
+# merge archs4 and gtex transcript results
+t_counts = merge(counts_archs4t, counts_gtext, by = "Transcript.Gene", all = TRUE)
+colnames(t_counts) <- c("Transcript.Gene", "ARCHS4", "GTEx")
+t_counts[is.na(t_counts)] <- 0
+t_counts <- t_counts %>%
+  filter(Transcript.Gene != "") %>%
+  filter(ARCHS4 + GTEx > 6) %>%
+  separate(Transcript.Gene, c("Transcript", "Gene"), sep = " - ", remove = F)
+t_counts_melt <- melt(t_counts %>% select(c(Transcript.Gene, ARCHS4, GTEx)))
+colnames(t_counts_melt) <- c("Transcript", "Background", "N")
+
+genes.surface = intersect(counts$Gene, surfaceome)
+genes.secreted = intersect(counts$Gene, secretome)
+```
+
+We define the final list of cell-surface candidates as genes that:
+1. are consistent targets (at least 3 conditions)
+2. are mapped to consistent transcript targets (at least 2 conditions)
+3. have transcripts that are highly expressed in at least one of the aged GTEx tissues
+
+To avoid the bar-plots being too long, we show only the genes/transcripts that are most consistent (i.e., appeared as targets in the highest number of analysis conditions of replicative senescence).
+
+```{r plot_genes}
+counts_plot <- melt(counts %>% filter(Gene %in% genes.surface) %>% filter(ARCHS4 + GTEx + TabulaSapiens >= 13 | Gene == "HLA-G")) # show top 24 + next most consistent gene
+colnames(counts_plot) <- c("Gene", "Background", "N")
+ggplot(data=counts_plot, aes(x=reorder(Gene, N, decreasing = TRUE), 
+                        y=N, fill=Background)) +
+  geom_bar(stat="identity") +
+  ylab("Conditions") +
+  xlab("Top 25 membrane protein-coding genes") +
+  theme_classic() +
+  scale_fill_grey(start = 0.3) +
+  theme(text = element_text(size = 20, family = "Arial"), axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(paste0(wd, '/figures/senescence_membrane_genes.png'), width = 10, height = 6, units = "in", dpi = 600)
+```
+
+```{r}
+counts_plot <- melt(counts %>% filter(Gene %in% genes.secreted) %>% filter(ARCHS4 + GTEx + TabulaSapiens >= 21)) # show top 25
+colnames(counts_plot) <- c("Gene", "Background", "N")
+ggplot(data=counts_plot, aes(x=reorder(Gene, N, decreasing = TRUE), 
+                        y=N, fill=Background)) +
+  geom_bar(stat="identity") +
+  ylab("Conditions") +
+  xlab("Top 25 secreted protein-coding genes") +
+  theme_classic() +
+  scale_fill_grey(start = 0.3) +
+  theme(text = element_text(size = 20, family = "Arial"), axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(paste0(wd, '/figures/senescence_secreted_genes.png'), width = 10, height = 6, units = "in", dpi = 600)
+```
+
+
+```{r plot_transcripts}
+t_counts_plot <- melt(t_counts %>% filter(Gene %in% surfaceome) %>% 
+                        # show top 19 + next 6 most consistent transcripts
+                        filter(ARCHS4 + GTEx >= 11 | Transcript.Gene %in% c("ENST00000638046 - ATP6AP2",
+                                                                           "ENST00000541932 - FLT1",
+                                                                           "ENST00000524970 - THY1",
+                                                                           "ENST00000559556 - TPM1",
+                                                                           "ENST00000296641 - F2RL2",
+                                                                           "ENST00000614102 - FAT1")) %>%
+                        select(c(Transcript.Gene, ARCHS4, GTEx)))
+colnames(t_counts_plot) <- c("Transcript.Gene", "Background", "N")
+ggplot(data=t_counts_plot, aes(x=reorder(Transcript.Gene, N), y=N, fill=Background)) +
+  geom_bar(stat="identity") +
+  ylab("Conditions") +
+  xlab("Top 25 membrane protein-coding transcripts") +
+  theme_classic() +
+  theme(text = element_text(size = 20, family = "Arial")) +
+  scale_fill_grey(start = 0.3) +
+  coord_flip()
+
+ggsave(paste0(wd, '/figures/senescence_membrane_transcripts.png'), height = 10, width = 10, units = "in", dpi = 600)
+```
+
+```{r}
+t_counts_plot <- melt(t_counts %>% filter(Gene %in% secretome) %>% 
+                        # show top 25 most consistent transcripts
+                        filter(ARCHS4 + GTEx >= 12) %>%
+                        select(c(Transcript.Gene, ARCHS4, GTEx)))
+colnames(t_counts_plot) <- c("Transcript.Gene", "Background", "N")
+ggplot(data=t_counts_plot, aes(x=reorder(Transcript.Gene, N), y=N, fill=Background)) +
+  geom_bar(stat="identity") +
+  ylab("Conditions") +
+  xlab("Top 25 secreted protein-coding transcripts") +
+  theme_classic() +
+  theme(text = element_text(size = 20, family = "Arial")) +
+  scale_fill_grey(start = 0.3) +
+  coord_flip()
+
+ggsave(paste0(wd, '/figures/senescence_secreted_transcripts.png'), height = 10, width = 10, units = "in", dpi = 600)
+```
+
+
+```{r plot_allgenes}
+allcounts_plot <- melt(counts %>% filter(ARCHS4 + GTEx + TabulaSapiens >= 27))
+colnames(allcounts_plot) <- c("Gene", "Background", "N")
+ggplot(data=allcounts_plot, aes(x=reorder(Gene, N, decreasing = TRUE), 
+                        y=N, fill=Background)) +
+  geom_bar(stat="identity") +
+  ylab("Conditions") +
+  xlab("Top 25 genes") +
+  theme_classic() +
+  scale_fill_grey(start = 0.3) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), text = element_text(size = 20, family = "Arial"))
+
+ggsave(paste0(wd, '/figures/senescence_allgenes.png'), width = 10, height = 6, units = "in", dpi = 600)
+```
+
+```{r plot_alltranscripts}
+t_allcounts_plot <- melt(t_counts %>% 
+                           filter(ARCHS4 + GTEx >= 15 | Transcript.Gene %in% c("ENST00000580353 - MYL12A",
+                                                                               "ENST00000509016 - ANXA5",
+                                                                               "ENST00000262209 - TRPA1",
+                                                                               "ENST00000409435 - SCN9A")) %>% 
+                                                        # show top 21 + next 4 most consistent transcripts
+                           select(c(Transcript.Gene, ARCHS4, GTEx)))
+colnames(t_allcounts_plot) <- c("Transcript", "Background", "N")
+ggplot(data=t_allcounts_plot, aes(x=reorder(Transcript, N), y=N, fill=Background)) +
+  geom_bar(stat="identity") +
+  ylab("Conditions") +
+  xlab("Top 25 transcripts") +
+  theme_classic() +
+  theme(text = element_text(size = 20, family = "Arial"))+
+  scale_fill_grey(start = 0.3) +
+  coord_flip()
+
+ggsave(paste0(wd, '/figures/senescence_alltranscripts.png'), height = 10, width = 10, units = "in", dpi = 600)
+```
+
+We save the top 30 most consistent gene candidates (without membrane filter) to submit to Enrichr for enrichment analysis. 
+
+```{r ranked_by_consistency}
+senmayo = read.csv(paste0(wd, "/data/SenMayo-gene-set.csv"), header = F)
+cell_age = read.csv(paste0(wd, "/data/cell_age_signature.csv"), header = F)
+
+counts$n = counts$ARCHS4 + counts$GTEx + counts$TabulaSapiens
+
+final <- counts
+final["Transcript"] <- rep(NA, nrow(final))
+final["CellAge"] <- ifelse(final$Gene %in% cell_age$V1, 1, 0)
+final["SenMayo"] <- ifelse(final$Gene %in% senmayo$V1, 1, 0)
+final["AgedTissue"] <- rep(NA, nrow(final))
+final["DiseaseTissue"] <- rep(NA, nrow(final))
+
+top_genes <- counts %>%
+  filter(n >= 25)
+
+write.table(top_genes$Gene, paste0(wd, "/results/enrichr/topgenes.csv"), sep = ",", row.names = FALSE, col.names = FALSE)
+
+aging_genes <- read.csv(paste0(wd, "/data/aging_genes.csv"))
+disease_genes <- read.csv(paste0(wd, "/results/disease_all_genes.csv"), header = T)
+
+for (i in 1:nrow(final)) {
+  gene <- final[i, "Gene"]
+  for (tissue in names(aging_genes)) {
+    if (!is.na(gene) & any(aging_genes[tissue] == gene)) {
+      final[i, "AgedTissue"] <- ifelse(is.na(nchar(final[i, "AgedTissue"])), tissue, paste(final[i, "AgedTissue"], tissue, sep = "; "))
+    }
+  }
+  for (disease in names(disease_genes)) {
+    if (!is.na(gene) & any(disease_genes[disease] == gene)) {
+      final[i, "DiseaseTissue"] <- ifelse(is.na(nchar(final[i, "DiseaseTissue"])), disease, paste(final[i, "DiseaseTissue"], disease, sep = "; "))
+    }
+  }
+  for (j in 1:nrow(t_counts)) {
+    transcript = t_counts[j, "Transcript"]
+    if (!is.na(gene) & gene == t_counts[j, "Gene"]) {
+      final[i, "Transcript"] <- ifelse(is.na(nchar(final[i, "Transcript"])), transcript, paste(final[i, "Transcript"], transcript, sep = "; "))
+    }
+  }
+}
+
+membrane.prot <- hpa_membranome %>% filter(Gene %in% genes.surface)
+membrane.prot <- merge(membrane.prot, final, by = "Gene")
+ligand.prot <- hpa_secretome %>% filter(Gene %in% genes.secreted)
+ligand.prot <- merge(ligand.prot, final, by = "Gene")
+
+write.csv(membrane.prot, paste0(wd, "/results/membrane_targets.csv"), row.names = F)
+write.csv(ligand.prot, paste0(wd, "/results/ligand_targets.csv"), row.names = F)
+write.csv(final, paste0(wd, "/results/all_targets.csv"), row.names = F)
+```
+
+Overlap plots:
+
+```{r}
+library(UpSetR)
+
+listInput <- list(Targets = counts$Gene, SenMayo = senmayo$V1, CellAge = cell_age$V1)
+upset(fromList(listInput), order.by = "freq")
+
+# listInput <- list("Membrane Targets" = genes.surface, SenMayo = senmayo$V1, CellAge = cell_age$V1)
+# upset(fromList(listInput), order.by = "freq")
+# 
+# listInput <- list("Extracellular Ligand Targets" = genes.secreted, SenMayo = senmayo$V1, CellAge = cell_age$V1)
+# upset(fromList(listInput), order.by = "freq")
+
+library(VennDiagram)
+draw.triple.venn(area1 = nrow(counts), area2 = nrow(senmayo), area3 = nrow(cell_age), n12 = 17, n23 = 18, n13 = 67, n123 = 6, category = c("RS Signature", "SenMayo", "CellAge"), cex = rep(3,7), cat.cex = rep(3,3), fill = c("#FF99FF", "#99CCFF", "#FFCC00"), col = c("#FF99FF", "#99CCFF", "#FFCC00"), cat.fontface = rep("bold",3), cat.default.pos = "text", cat.pos = c(1.5, 10.5, 0), cat.dist = c(0.15, 0.15,-.12), fontfamily ="Arial")
+
+# draw.triple.venn(area1 = length(genes.surface), area2 = nrow(senmayo), area3 = nrow(cell_age), n12 = 2, n23 = 18, n13 = 17, n123 = 0, category = c("Membrane Targets", "SenMayo", "CellAge"), cex = rep(3,7), cat.cex = rep(3,3), fill = c("#FF99FF", "#99CCFF", "#FFCC00"), col = c("#FF99FF", "#99CCFF", "#FFCC00"), cat.fontface = rep("bold",3), cat.default.pos = "text", cat.pos = c(1.5, 10.5, 0), cat.dist = c(0.18, 0.18,-.18))
+# 
+# draw.triple.venn(area1 = length(genes.secreted), area2 = nrow(senmayo), area3 = nrow(cell_age), n12 = 31, n23 = 18, n13 = 36, n123 = 8, category = c("Ligand Targets", "SenMayo", "CellAge"), cex = rep(3,7), cat.cex = rep(3,3), fill = c("#FF99FF", "#99CCFF", "#FFCC00"), col = c("#FF99FF", "#99CCFF", "#FFCC00"), cat.fontface = rep("bold",3), cat.default.pos = "text", cat.pos = c(1.5, 10.5, 0), cat.dist = c(0.15, 0.15,-.1))
+
+```
+
+Enrichment analysis:
+
+```{r enrichr}
+library(igraph)
+library(tidygraph)
+library(ggnetwork)
+library(ggraph)
+
+go_enrichr = read.table(paste0(wd, "/results/enrichr/GO_Biological_Process_2021_table.txt"), sep = '\t', header = T)[1:3,]
+go_enrichr <- go_enrichr %>% separate(Term, c("Term", "GO"), sep = -12)
+gwas_enrichr = read.table(paste0(wd, "/results/enrichr/GWAS_Catalog_2019_table.txt"), sep = '\t', header = T)[c(2,4,6),]
+kegg_enrichr = read.table(paste0(wd, "/results/enrichr/KEGG_2021_Human_table.txt"), sep = '\t', header = T)[1:4,]
+mgi_enrichr = read.table(paste0(wd, "/results/enrichr/MGI_Mammalian_Phenotype_Level_4_2021_table.txt"), sep = '\t', header = T)[1,]
+mgi_enrichr <- mgi_enrichr %>% separate(Term, c("Term", "MP"), sep = -10)
+
+go.edges = NULL
+for (i in 1:nrow(go_enrichr)) {
+  term <- go_enrichr[i, "Term"]
+  genes <- strsplit(go_enrichr[i, "Genes"], ";")[[1]]
+  for (gene in genes) {
+    go.edges <- append(go.edges, c(term, gene))
+  }
+}
+gwas.edges = NULL
+for (i in 1:nrow(gwas_enrichr)) {
+  term <- gwas_enrichr[i, "Term"]
+  genes <- strsplit(gwas_enrichr[i, "Genes"], ";")[[1]]
+  for (gene in genes) {
+    gwas.edges <- append(gwas.edges, c(term, gene))
+  }
+}
+mgi.edges = NULL
+for (i in 1:nrow(mgi_enrichr)) {
+  term <- mgi_enrichr[i, "Term"]
+  genes <- strsplit(mgi_enrichr[i, "Genes"], ";")[[1]]
+  for (gene in genes) {
+    mgi.edges <- append(mgi.edges, c(term, gene))
+  }
+}
+kegg.edges = NULL
+for (i in 1:nrow(kegg_enrichr)) {
+  term <- kegg_enrichr[i, "Term"]
+  genes <- strsplit(kegg_enrichr[i, "Genes"], ";")[[1]]
+  for (gene in genes) {
+    kegg.edges <- append(kegg.edges, c(term, gene))
+  }
+}
+
+g <- make_empty_graph(directed = F) + 
+  vertices(go_enrichr$Term, color = "darkred", shape = "square", group = "GO\nBiological\nProcess") + 
+  vertices(unique(go.edges[!(go.edges %in% go_enrichr$Term)]), color = "lightblue", shape = "circle", group = "Gene") +
+  edges(go.edges)
+g <- g +
+  vertices(gwas_enrichr$Term, color = "salmon", shape = "square", group = "GWAS\nCatalog") +
+  vertices(unique(gwas.edges[!(gwas.edges %in% c(gwas_enrichr$Term, V(g)$name))]), color = "lightblue", shape = "circle", group = "Gene") +
+  edges(gwas.edges)
+g <- g +
+  vertices(mgi_enrichr$Term, color = "orange", shape = "square", group = "MGI\nPhenotype") +
+  vertices(unique(mgi.edges[!(mgi.edges %in% c(mgi_enrichr$Term, V(g)$name))]), color = "lightblue", shape = "circle", group = "Gene") +
+  edges(mgi.edges)
+g <- g +
+  vertices(kegg_enrichr$Term, color = "lightpink", shape = "square", group = "KEGG") +
+  vertices(unique(kegg.edges[!(kegg.edges %in% c(kegg_enrichr$Term, V(g)$name))]), color = "lightblue", shape = "circle", group = "Gene") +
+  edges(kegg.edges)
+
+library(visNetwork)
+nodes <- data.frame(V(g)$name, V(g)$color, V(g)$group, V(g)$shape)
+names(nodes) <- c("id", "color", "group", "shape")
+nodes$label <- nodes$id
+nodes$font.size <- 20
+links <- as_long_data_frame(g)[, c("from_name", "to_name")]
+names(links) <- c("from", "to")
+
+visnet3 <- visNetwork(nodes, links, width = "100%")
+visnet3 <- visGroups(visnet3, groupname = "GO\nBiological\nProcess", shape = "square", color = list(background = "darkred"))
+visnet3 <- visGroups(visnet3, groupname = "GWAS\nCatalog", shape = "square", color = list(background = "salmon"))
+visnet3 <- visGroups(visnet3, groupname = "MGI\nPhenotype", shape = "square", color = list(background = "orange"))
+visnet3 <- visGroups(visnet3, groupname = "KEGG", shape = "square", color = list(background = "lightpink"))
+visnet3 <- visGroups(visnet3, groupname = "Gene", shape = "circle", color = list(background = "azure", border = "black"))
+visnet3 <- visEdges(visnet3, color = "black")
+visnet3 <- visLegend(visnet3, position="right", ncol=1)
+
+visnet3 %>% visSave(file = paste0(wd, "/figures/network.html"))
+
+visnet <- visNetwork(nodes, links, height = "1000px", width = "100%") %>%
+  visGroups(groupname = "GO\nBiological\nProcess") %>%
+  visGroups(groupname = "GWAS\nCatalog") %>%
+  visGroups(groupname = "KEGG") %>%
+  visGroups(groupname = "MGI\nPhenotype") %>%
+  visGroups(groupname = "Gene") %>%
+  visEdges(color = "black") %>%
+  visLegend(addNodes = list(
+    list(label = "GO\nBiological\nProcess", shape = "square", 
+         color = "darkred"),
+    list(label = "GWAS\nCatalog", shape = "square", 
+         color = "salmon"),
+    list(label = "KEGG", shape = "square", 
+         color = "lightpink"),
+    list(label = "MGI\nPhenotype", shape = "square", 
+         color = "orange"),
+    list(label = "Gene", shape = "circle", 
+         color = "lightblue")), 
+    position="right",
+    useGroups = FALSE) %>%
+  visIgraphLayout() %>%
+  visSave(file = paste0(wd, "/figures/network.html"))
+```
+
